@@ -640,7 +640,6 @@ class MultiHeadAxialAttention3D(nn.Module):
         self.key_conv = nn.Conv3d(in_channels=in_dim, out_channels=q_k_dim, kernel_size=1)
         self.value_conv = nn.Conv3d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
 
-        # 定义位置嵌入
         if self.axis == 'D':
             self.pos_embed = nn.Parameter(torch.zeros(1, q_k_dim, D, 1, 1))
         elif self.axis == 'H':
@@ -657,12 +656,10 @@ class MultiHeadAxialAttention3D(nn.Module):
     def forward(self, x, processed):
         B, C, D, H, W = x.size()
         
-        # 生成Q, K, V并添加位置嵌入
         Q = self.query_conv(x) + self.pos_embed
         K = self.key_conv(processed) + self.pos_embed
         V = self.value_conv(processed)
 
-        # 分离多头
         Q = Q.view(B, self.num_heads, self.head_dim, D, H, W)
         K = K.view(B, self.num_heads, self.head_dim, D, H, W)
         V = V.view(B, self.num_heads, self.in_dim // self.num_heads, D, H, W)
@@ -670,7 +667,6 @@ class MultiHeadAxialAttention3D(nn.Module):
         scale = math.sqrt(self.head_dim)
 
         if self.axis == 'D':
-            # 沿D轴计算注意力
             Q = Q.permute(0, 1, 4, 5, 3, 2).contiguous()  # (B, num_heads, H, W, D, head_dim)
             Q = Q.view(B*self.num_heads*H*W, D, self.head_dim)
             
@@ -688,7 +684,6 @@ class MultiHeadAxialAttention3D(nn.Module):
             out = out.permute(0, 1, 5, 4, 2, 3).contiguous()
             
         elif self.axis == 'H':
-            # 沿H轴计算注意力
             Q = Q.permute(0, 1, 3, 5, 4, 2).contiguous()  # (B, num_heads, D, W, H, head_dim)
             Q = Q.view(B*self.num_heads*D*W, H, self.head_dim)
             
@@ -706,7 +701,6 @@ class MultiHeadAxialAttention3D(nn.Module):
             out = out.permute(0, 1, 5, 2, 4, 3).contiguous()
             
         else:  # self.axis == 'W'
-            # 沿W轴计算注意力
             Q = Q.permute(0, 1, 3, 4, 5, 2).contiguous()  # (B, num_heads, D, H, W, head_dim)
             Q = Q.view(B*self.num_heads*D*H, W, self.head_dim)
             
@@ -754,15 +748,11 @@ class AxialAttention3D(nn.Module):
         self.key_conv = nn.Conv3d(in_channels=in_dim, out_channels=q_k_dim, kernel_size=1)
         self.value_conv = nn.Conv3d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
 
-        # 定义位置嵌入
         if self.axis == 'D':
-            # Depth 轴的位置嵌入
             self.pos_embed = nn.Parameter(torch.zeros(1, q_k_dim, D, 1, 1))
         elif self.axis == 'H':
-            # Height 轴的位置嵌入
             self.pos_embed = nn.Parameter(torch.zeros(1, q_k_dim, 1, H, 1))
         elif self.axis == 'W':
-            # Width 轴的位置嵌入
             self.pos_embed = nn.Parameter(torch.zeros(1, q_k_dim, 1, 1, W))
         else:
             raise ValueError("Axis must be one of 'D', 'H', or 'W'.")
@@ -780,8 +770,6 @@ class AxialAttention3D(nn.Module):
         """
         B, C, D, H, W = x.size()
         
-        # 生成Q, K, V
-        # 生成 Q, K, V 并添加位置嵌入
         Q = self.query_conv(processed) + self.pos_embed  # (B, q_k_dim, D, H, W) + pos_embed
         K = self.key_conv(processed) + self.pos_embed  # (B, q_k_dim, D, H, W) + pos_embed
         V = self.value_conv(processed)  # (B, in_dim, D, H, W)
@@ -790,7 +778,6 @@ class AxialAttention3D(nn.Module):
         # V = self.value_conv(x)  # (B, in_dim, D, H, W)
         scale = math.sqrt(self.q_k_dim)
         if self.axis == 'D':
-            # 沿D轴计算注意力
             Q = Q.permute(0, 3, 4, 2, 1).contiguous()  # (B, H, W, D, q_k_dim)
             Q = Q.view(B*H*W, D, self.q_k_dim)  # (B*H*W, D, q_k_dim)
             
@@ -800,19 +787,15 @@ class AxialAttention3D(nn.Module):
             V = V.permute(0, 3, 4, 2, 1).contiguous()  # (B, H, W, D, in_dim)
             V = V.view(B*H*W, D, self.in_dim)  # (B*H*W, D, in_dim)
             
-            # 计算注意力分数
             attn = torch.bmm(Q, K) / scale # (B*H*W, D, D)
             attn = self.softmax(attn)
             
-            # 应用注意力
             out = torch.bmm(attn, V)  # (B*H*W, D, in_dim)
 
-            # 恢复原始维度
             out = out.view(B, H, W, D, self.in_dim)
             out = out.permute(0, 4, 3, 1, 2).contiguous()  # (B, C, D, H, W)
             
         elif self.axis == 'H':
-            # 沿H轴计算注意力
             Q = Q.permute(0, 2, 4, 3, 1).contiguous()  # (B, D, W, H, q_k_dim)
             Q = Q.view(B*D*W, H, self.q_k_dim)  # (B*D*W, H, q_k_dim)
             
@@ -830,7 +813,6 @@ class AxialAttention3D(nn.Module):
             out = out.permute(0, 4, 1, 3, 2).contiguous()  # (B, C, D, H, W)
             
         else:  # self.axis == 'W'
-            # 沿W轴计算注意力
             Q = Q.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, q_k_dim)
             Q = Q.view(B*D*H, W, self.q_k_dim)  # (B*D*H, W, q_k_dim)
             
@@ -847,20 +829,17 @@ class AxialAttention3D(nn.Module):
             out = out.view(B, D, H, W, self.in_dim)
             out = out.permute(0, 4, 1, 2, 3).contiguous()  # (B, C, D, H, W)
         
-        # 残差连接
         gamma = torch.sigmoid(self.gamma)
         out = gamma * out + (1-gamma) * x
         return out
 
 
 class DirectionalMamba(nn.Module):
-    """处理单个方向上的所有切片的批处理版本"""
     def __init__(self, d_model,patch_ini ,d_state=32, axis='D', is_vssb=True, is_slice_attention=True):
         super().__init__()
         self.is_vssb = is_vssb
         self.axis = axis
         
-        # 定义每个轴的排列方式 (增加batch维度的排列)
         self.permute_dict = {
             'D': [(0, 1, 2, 3, 4), (0, 2, 3, 4, 1), (0, 4, 1, 2, 3)],  # 原始->mamba输入->输出
             'H': [(0, 1, 2, 3, 4), (0, 3, 2, 4, 1), (0, 4, 2, 1, 3)],
@@ -881,21 +860,16 @@ class DirectionalMamba(nn.Module):
     def forward(self, x):
         # x: [B, C, D, H, W]
         
-        # 1. 获取当前轴的排列方式
         original_order, to_mamba, from_mamba = self.permute_dict[self.axis]
         
-        # 2. 重排序用于mamba处理
         if self.is_vssb:
 
             x_mamba = x.permute(*to_mamba)  # [B, L, *, *, C]，L是处理维度(D/H/W)
             B, L = x_mamba.shape[:2]
-            # 重塑以批量处理所有位置
             x_mamba = x_mamba.reshape(B * L, *x_mamba.shape[2:])
             
-            # Mamba处理
             processed = self.mamba(x_mamba)
             
-            # 恢复形状
             processed = processed.reshape(B, L, *processed.shape[1:])
             processed = processed.permute(*from_mamba)  # [B, C, D, H, W]
         else :
@@ -905,7 +879,6 @@ class DirectionalMamba(nn.Module):
             processed = self.mamba(x_mamba)
              
 
-        # 3. 应用注意力机制
         if isinstance(self.slice_attention, nn.Identity):
             return processed
         else:
@@ -948,7 +921,6 @@ class TriplaneMamba3DConcat(nn.Module):
     def __init__(self, input_channels,patch_ini,reduce_factor=1,is_slice_attention=True,is_shuffle=False,is_split=True,is_res=True,is_proj=False):
         super().__init__()
         
-        # 投影层
         hidden_channels = input_channels
         self.is_proj=is_proj
         if self.is_proj:
@@ -959,7 +931,6 @@ class TriplaneMamba3DConcat(nn.Module):
         )
             hidden_channels = input_channels//reduce_factor
         self.hidden_channels = hidden_channels
-        # 三个方向的处理模块
         self.is_res=is_res
         self.is_shuffle=is_shuffle
         self.is_split=is_split
@@ -984,20 +955,16 @@ class TriplaneMamba3DConcat(nn.Module):
         C=self.hidden_channels
         if self.is_split:
             channel_quarter = C // 4
-            # 将输入分成四份
-            x_feat = x[:, :channel_quarter*2]  # 1/2通道给x方向
-            y_feat = x[:, channel_quarter*2:channel_quarter*3]  # 1/4通道给y方向
-            z_feat = x[:, channel_quarter*3:]  # 1/4通道给z方向
+            x_feat = x[:, :channel_quarter*2]  # 1/2
+            y_feat = x[:, channel_quarter*2:channel_quarter*3]  # 1/4
+            z_feat = x[:, channel_quarter*3:]  # 1/4
 
             feat_list = []
             
-            # X方向
             feat_list.append(self.mamba_x(x_feat))
 
-            # Y方向 
             feat_list.append(self.mamba_y(y_feat))
 
-            # Z方向
             feat_list.append(self.mamba_z(z_feat))
             
             # feat_list.append(res_feat)
@@ -1006,16 +973,12 @@ class TriplaneMamba3DConcat(nn.Module):
                 ShuffleChannelBlock = ShuffleChannel(groups=4)
                 out = ShuffleChannelBlock(out)
         else:
-            # 逐方向处理并累积到输出
             feat_list = []
             
-            # X方向
             feat_list.append(self.mamba_x(x))
 
-            # Y方向 
             feat_list.append(self.mamba_y(x))
 
-            # Z方向
             feat_list.append(self.mamba_z(x))
             
             out = self.fusion(feat_list[0]+feat_list[1]+feat_list[2])
@@ -1365,12 +1328,11 @@ class HCMA(nn.Module):
         assert len(channels) == depth + 1, "len(encoder_channels) != depth + 1"
         assert len(strides) == depth, "len(strides) != depth"
 
-        self.encoders = nn.ModuleList()  # 使用 ModuleList 存储编码器层
-        self.decoders = nn.ModuleList()  # 使用 ModuleList 存储解码器层
-        self.skips = nn.ModuleList()  # 使用 ModuleList 存储SKIP层
+        self.encoders = nn.ModuleList()  # 
+        self.decoders = nn.ModuleList()  # 
+        self.skips = nn.ModuleList()  # 
         self.encoders.append(DenseConv(in_channels, channels[0]))
         patch_ini=[64,192,128]
-        # 创建编码器层
         for i in range(self.depth):
             for j in range(3):
                 patch_ini[j] = int(patch_ini[j]/strides[i][0])
@@ -1390,7 +1352,6 @@ class HCMA(nn.Module):
                 ),
             )
 
-        # 创建解码器层
         for i in range(self.depth):
             patch_ini*=strides[self.depth - i - 1][0]
             for j in range(3):
@@ -1429,10 +1390,9 @@ class HCMA(nn.Module):
         
 
     def forward(self, x):
-        encoder_features = []  # 存储编码器输出
-        decoder_features = []  # 存储解码器输出
+        encoder_features = []  # 
+        decoder_features = []  # 
 
-        # 编码过程
         for i,encoder in enumerate(self.encoders):
             if i==0:
                 x = encoder(x)
